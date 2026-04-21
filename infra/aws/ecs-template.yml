@@ -1,0 +1,75 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DTC Subscription Platform - ECS Fargate",
+  "Parameters": {
+    "VpcId": {
+      "Type": "AWS::EC2::VPC::Id",
+      "Description": "VPC ID"
+    },
+    "SubnetIds": {
+      "Type": "List<AWS::EC2::Subnet::Id>",
+      "Description": "Subnet IDs"
+    },
+    "ClusterName": {
+      "Type": "String",
+      "Default": "dtc-cluster"
+    }
+  },
+  "Resources": {
+    "Cluster": {
+      "Type": "AWS::ECS::Cluster",
+      "Properties": {
+        "ClusterName": {"Ref": "ClusterName"}
+      }
+    },
+    "TaskDefinition": {
+      "Type": "AWS::ECS::TaskDefinition",
+      "Properties": {
+        "Family": "dtc-backend",
+        "NetworkMode": "awsvpc",
+        "RequiresCompatibilities": ["FARGATE"],
+        "Cpu": "256",
+        "Memory": "512",
+        "ContainerDefinitions": [{
+          "Name": "backend",
+          "Image": "dtc-backend:latest",
+          "Essential": true,
+          "PortMappings": [{
+            "ContainerPort": 5000
+          }],
+          "Environment": [
+            {"Name": "NODE_ENV", "Value": "production"}
+          ],
+          "LogConfiguration": {
+            "LogDriver": "awslogs",
+            "Options": {
+              "awslogs-group": "/ecs/dtc-backend",
+              "awslogs-region": {"Ref": "AWS::Region"},
+              "awslogs-stream-prefix": "ecs"
+            }
+          }
+        }]
+      }
+    },
+    "Service": {
+      "Type": "AWS::ECS::Service",
+      "Properties": {
+        "Cluster": {"Ref": "Cluster"},
+        "TaskDefinition": {"Ref": "TaskDefinition"},
+        "DesiredCount": 2,
+        "LaunchType": "FARGATE",
+        "NetworkConfiguration": {
+          "AwsvpcConfiguration": {
+            "Subnets": {"Ref": "SubnetIds"},
+            "AssignPublicIp": "ENABLED"
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "ClusterName": {
+      "Value": {"Ref": "Cluster"}
+    }
+  }
+}
