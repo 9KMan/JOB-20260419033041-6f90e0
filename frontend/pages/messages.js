@@ -6,6 +6,8 @@ import { formatDateTime } from '@/lib/utils';
 import toast from 'react-hot-toast';
 import { useSocket } from '@/context/SocketContext';
 
+export const dynamic = 'force-dynamic';
+
 export default function MessagesPage() {
   const router = useRouter();
   const socket = useSocket();

@@ -1,5 +1,3 @@
-import { formatCurrency } from '@/lib/utils';
-
 export function formatCurrency(amount, currency = 'USD') {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',

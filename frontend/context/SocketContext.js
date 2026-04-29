@@ -48,7 +48,10 @@ export function SocketProvider({ children }) {
 
 export function useSocket() {
   const context = useContext(SocketContext);
-  if (!context) {
+  if (context === null) {
+    return null;
+  }
+  if (context === undefined) {
     throw new Error('useSocket must be used within SocketProvider');
   }
   return context;
