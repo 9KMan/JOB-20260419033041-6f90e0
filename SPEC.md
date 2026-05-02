@@ -1,11 +1,11 @@
-# Specification: MDM Platform v3 — Master Data Management System
+# Specification: AI-Powered DTC Subscription Platform
 
 ## 1. Project Overview
 
-**Project:** MDM Platform v3 Migration
-**Type:** Full-stack enterprise web application
-**Core Functionality:** A Master Data Management (MDM) platform for managing golden records, source system lineage, matching workflows, and steward review — with PostgreSQL at the core and GraphQL API.
-**Target Users:** Enterprise data teams, stewards, and administrators managing customer/product golden records across multiple source systems.
+**Project:** AI-Powered DTC Subscription Platform
+**Type:** Full-stack subscription SaaS (B2C / DTC)
+**Core Functionality:** End-to-end subscription management platform with customer portal, Stripe billing, admin dashboard, and AI-driven voice/SMS automation
+**Target Users:** Direct-to-Consumer brands selling subscription products; internal admin/stewards managing orders, customers, and fulfillment
 
 ---
 
@@ -13,312 +13,239 @@
 
 | Component | Technology |
 |-----------|------------|
-| **Backend** | Node.js + TypeScript + GraphQL (Apollo Server) |
-| **Database** | PostgreSQL 15 with ENUM types, JSONB, pg_trgm |
-| **Frontend** | React 18 + TypeScript + GraphQL Client |
-| **Auth** | JWT with role-based + per-page permissions (JSONB) |
-| **ORM** | Prisma or raw SQL (PostgreSQL-first) |
-| **Search** | pg_trgm full-text indexes |
-| **Containerization** | Docker + Docker Compose |
+| **Frontend** | React 18 + Next.js (App Router), TypeScript, Tailwind CSS |
+| **Backend** | Node.js + TypeScript, Express or Fastify |
+| **Database** | PostgreSQL 15 with ENUMs, JSONB, CITEXT |
+| **ORM** | Prisma (PostgreSQL-first) |
+| **Auth** | JWT with role-based access (admin, customer) |
+| **Billing** | Stripe Subscriptions API (Checkout, Customer Portal, Webhooks) |
+| **SMS/Voice** | Twilio SMS + Voice AI API |
+| **Email** | SendGrid (transactional + marketing) |
+| **Fulfillment** | Fulfillment API integrations (ShipBob / ShipMonk / custom) |
+| **CRM** | CRM API integration (HubSpot / generic) |
+| **Infrastructure** | AWS (EC2 or ECS, RDS PostgreSQL, S3, SES) |
+| **Encryption** | AES-256 at rest for sensitive data; TLS in transit |
 
 ---
 
-## 3. Database Architecture
+## 3. Functionality Specification
 
-### 3.1 Design Principles
-- **UUID surrogate keys** via `uuid_generate_v4()` on all tables
-- **Natural keys** as `UNIQUE` constraints (`customer_code`, `batch_number`, `source_code`)
-- **All timestamps**: `TIMESTAMPTZ` in UTC; demographic dates: `DATE`
-- **Case-insensitive text** (`CITEXT`) for username and email
-- **PostgreSQL ENUM** types for: `role`, `status`, `match_type`, `audit_action`, `record_status`
-- **JSONB** for: permissions, raw source records, matching parameters, dashboard metrics, AI results
-- **pg_trgm indexes** on `full_name` fields for global search bar
-- **Append-only audit_events** — no UPDATE/DELETE in production
-- **Soft delete** — records set to `ARCHIVED`/`DELETED` status, never physically deleted
+### 3.1 Customer-Facing Features
 
-### 3.2 Eight Logical Domains
+#### Multi-Step Onboarding
+- Step 1: Account creation (email/password + email verification)
+- Step 2: Subscription plan selection (monthly/annual, tiered)
+- Step 3: Shipping & billing address
+- Step 4: Payment (Stripe Checkout — embedded or redirect)
+- Step 5: Welcome/confirmation screen
+- Progress indicator, save-and-resume support
 
-#### Domain 1: Authorization
-- `roles` — role definitions with JSONB permissions
-- `users` — users with CITEXT email, role FK
-- `permissions` — per-page, per-action permissions
+#### Customer Dashboard
+- **Subscription Management:** View active plan, upgrade/downgrade/cancel, pause subscription, change payment method
+- **Order Tracking:** List of past orders with status (processing → shipped → delivered), tracking numbers, fulfillment partner
+- **Messaging Center:** In-app messaging to support; SMS/email notification preferences (Twilio + SendGrid)
+- **Invoice History:** Download invoices, view billing history from Stripe
+- **Profile Management:** Address book, notification settings, password change
 
-#### Domain 2: Source System Catalog
-- `data_sources` — source system catalog (name, type, connection info)
-- `batch_ingestions` — batch ingestion jobs (batch_number, source FK, status, stats)
-- `source_records` — raw source records with lineage (never physically deleted)
+#### AI Voice Agent (Twilio Voice AI)
+- IVR-style phone tree for order status queries
+- Natural language understanding for order tracking, subscription changes
+- Fallback to human agent / support ticket creation
+- Call logging and sentiment analysis
 
-#### Domain 3: Golden Records
-- `golden_records` — golden records with match provenance (UUID, status, confidence)
-- `golden_record_sources` — junction linking golden records to source records
-- `match_provenance` — full match history and confidence scores
+### 3.2 Admin Dashboard
 
-#### Domain 4: Relationships
-- `households` — household groupings
-- `organizations` — organization entities
-- `relationships` — family and employment relationships (person-person, person-org)
-- `identity_documents` — passports, IDs linked to persons
-- `product_accounts` — product accounts linked to persons/organizations
+#### Analytics Dashboard
+- MRR/ARR metrics (from Stripe data)
+- Subscriber churn rate, LTV, CAC
+- Order volume over time
+- Revenue by plan tier
+- Dashboard charts: line/bar charts (Recharts or similar)
 
-#### Domain 5: Matching Engine
-- `matching_config` — thresholds, action rules, algorithm params
-- `match_tasks` — batch match tasks (status, progress)
-- `match_task_records` — per-record match outcomes
+#### Customer Management
+- Search customers by email/name/phone
+- View full customer profile: subscription status, order history, notes
+- Manually adjust subscription (credit, pause, cancel)
+- Override fulfillment decisions
 
-#### Domain 6: Steward Workflow
-- `suspect_records` — records flagged for steward review
-- `steward_reviews` — steward decisions with comments
-- `workflow_actions` — approve, reject, merge, split actions
+#### Order & Fulfillment Management
+- Order list with filters (status, date, customer)
+- Trigger fulfillment manually (if API integration fails)
+- View/troubleshoot webhook events
+- Bulk actions: mark shipped, issue refund
 
-#### Domain 7: Audit & Compliance
-- `audit_events` — append-only field-level audit trail (TIMESTAMPTZ, user, table, field, old/new value)
-- `audit_snapshots` — periodic state snapshots
+#### CRM Sync
+- Push customer events (new sub, churn, upgrade) to CRM
+- Two-way sync: CRM notes → customer profile in platform
 
-#### Domain 8: Reporting & AI
-- `dashboard_kpis` — KPI snapshots (JSONB metrics)
-- `scheduled_reports` — report configuration (schedule, params)
-- `ai_queries` — AI Assistant query log
-- `ai_results` — AI Assistant result cache (JSONB)
+### 3.3 Integrations
 
-### 3.3 Database Schema (DDL Summary)
+#### Stripe
+- Products & Prices API (plans/tiers)
+- Checkout Sessions (new subscriptions)
+- Customer Portal (self-service management)
+- Webhooks: `checkout.session.completed`, `invoice.paid`, `invoice.payment_failed`, `customer.subscription.updated/deleted`
+- Idempotency on all webhook handlers
+-grace period handling for failed payments
 
-```sql
--- ENUM types
-CREATE TYPE record_status AS ENUM ('ACTIVE', 'MERGED', 'ARCHIVED', 'DELETED');
-CREATE TYPE match_type AS ENUM ('EXACT', 'PROBABILISTIC', 'RULE_BASED');
-CREATE TYPE audit_action AS ENUM ('CREATE', 'UPDATE', 'DELETE', 'MERGE', 'SPLIT', 'ARCHIVE');
-CREATE TYPE batch_status AS ENUM ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED');
-CREATE TYPE match_task_status AS ENUM ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED');
+#### Twilio
+- SMS: Order confirmations, shipping notifications, renewal reminders
+- Voice AI: Inbound IVR for order status, account changes
+- Call recording storage (S3)
+- Opt-out handling
 
--- Core tables (representative)
-CREATE TABLE data_sources (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  source_code VARCHAR(100) UNIQUE NOT NULL,
-  name VARCHAR(255) NOT NULL,
-  type VARCHAR(50),
-  config JSONB,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+#### SendGrid
+- Transactional: welcome email, order receipts, subscription renewal notices
+- Marketing: (Phase 2) newsletter, promotional campaigns
+- Template management via SendGrid Dynamic Templates
 
-CREATE TABLE source_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  source_id UUID REFERENCES data_sources(id),
-  batch_number VARCHAR(100),
-  customer_code VARCHAR(100) UNIQUE NOT NULL,
-  full_name TEXT,
-  email CITEXT,
-  phone VARCHAR(50),
-  address JSONB,
-  raw_payload JSONB,
-  status record_status DEFAULT 'ACTIVE',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-CREATE INDEX idx_source_records_full_name_trgm ON source_records USING gin (full_name gin_trgm_ops);
+#### Fulfillment APIs
+- Create fulfillment orders when subscription renews
+- Receive tracking updates (webhook or polling)
+- Handle out-of-stock / backorder scenarios
+- Retry logic with exponential backoff
 
-CREATE TABLE golden_records (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  canonical_name TEXT,
-  canonical_email CITEXT,
-  status record_status DEFAULT 'ACTIVE',
-  confidence_score DECIMAL(5,4),
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+### 3.4 Security
 
-CREATE TABLE audit_events (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  table_name VARCHAR(100),
-  record_id UUID,
-  field_name VARCHAR(100),
-  action audit_action,
-  old_value JSONB,
-  new_value JSONB,
-  user_id UUID,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
--- Append-only: no UPDATE/DELETE on audit_events
+- All passwords hashed with bcrypt (cost factor 12)
+- JWT access tokens (15 min TTL) + refresh tokens (7 days, httpOnly cookie)
+- Rate limiting on all API endpoints (express-rate-limit)
+- Input validation with Zod on all API inputs
+- SQL injection prevention via Prisma parameterized queries
+- XSS prevention: CSP headers, sanitized outputs
+- CORS: strict origin whitelist
+- AWS: RDS in private subnet, S3 buckets private, IAM roles least privilege
 
-CREATE TABLE roles (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name VARCHAR(100) UNIQUE NOT NULL,
-  permissions JSONB NOT NULL DEFAULT '{}'
-);
+---
 
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email CITEXT UNIQUE NOT NULL,
-  password_hash VARCHAR(255),
-  role_id UUID REFERENCES roles(id),
-  status VARCHAR(20) DEFAULT 'ACTIVE',
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
+## 4. Data Model (PostgreSQL)
+
+```
+users             — id, email, password_hash, phone, role (ENUM: admin, customer), mfa_enabled, created_at, updated_at
+subscriptions     — id, user_id, stripe_subscription_id, stripe_customer_id, plan_tier, status (ENUM: active, paused, cancelled, past_due), current_period_start, current_period_end, created_at, updated_at
+orders            — id, user_id, subscription_id, fulfillment_order_id, status (ENUM: pending, processing, shipped, delivered, cancelled), tracking_number, fulfillment_partner, total_amount, currency, created_at, updated_at
+addresses         — id, user_id, type (ENUM: billing, shipping), line1, line2, city, state, postal_code, country, is_default
+payment_methods   — id, user_id, stripe_payment_method_id, brand, last4, exp_month, exp_year, is_default
+messages          — id, user_id, direction (ENUM: inbound, outbound), channel (ENUM: sms, email, in_app), body, status, sent_at
+subscription_plans— id, stripe_price_id, name, tier, monthly_price, annual_price, features (JSONB), active
+webhook_events    — id, stripe_event_id, type, payload (JSONB), processed (BOOLEAN), processed_at
+audit_logs        — id, user_id, action, entity_type, entity_id, old_value (JSONB), new_value (JSONB), ip_address, created_at
+crm_sync_events   — id, user_id, event_type, crm_record_id, synced (BOOLEAN), created_at, synced_at
+voice_call_logs   — id, user_id, twilio_call_sid, direction, duration_sec, recording_url, transcription, sentiment_score, created_at
 ```
 
 ---
 
-## 4. GraphQL API
+## 5. API Design
 
-### 4.1 Schema Overview
+### REST Endpoints (Express/Fastify)
 
-```graphql
-type Query {
-  # Golden Records
-  goldenRecord(id: UUID!): GoldenRecord
-  goldenRecords(filter: GoldenRecordFilter, page: Int, pageSize: Int): GoldenRecordConnection!
-  searchGoldenRecords(query: String!): [GoldenRecord!]!
-
-  # Source Records
-  sourceRecord(id: UUID!): SourceRecord
-  sourceRecords(sourceId: UUID, status: RecordStatus, page: Int, pageSize: Int): SourceRecordConnection!
-
-  # Data Sources
-  dataSources: [DataSource!]!
-  dataSource(id: UUID!): DataSource
-
-  # Match Tasks
-  matchTasks(status: MatchTaskStatus): [MatchTask!]!
-  matchTask(id: UUID!): MatchTask
-
-  # Steward Workflow
-  suspectRecords(page: Int, pageSize: Int): SuspectRecordConnection!
-  stewardReview(id: UUID!): StewardReview
-
-  # Dashboard
-  dashboardKPIs: DashboardKPIs!
-  scheduledReports: [ScheduledReport!]!
-
-  # Auth
-  me: User
-}
-
-type Mutation {
-  # Auth
-  login(email: String!, password: String!): AuthPayload!
-  register(input: RegisterInput!): User!
-
-  # Golden Records
-  approveGoldenRecord(id: UUID!): GoldenRecord!
-  mergeGoldenRecords(sourceIds: [UUID!]!, targetId: UUID!): GoldenRecord!
-  splitGoldenRecord(id: UUID!): [GoldenRecord!]!
-
-  # Matching
-  runMatchingTask(configId: UUID!): MatchTask!
-
-  # Steward Workflow
-  submitStewardReview(input: StewardReviewInput!): StewardReview!
-
-  # Data Sources
-  createDataSource(input: DataSourceInput!): DataSource!
-  ingestBatch(sourceId: UUID!, records: [SourceRecordInput!]!): BatchIngestion!
-
-  # Reports
-  triggerReport(reportId: UUID!): ScheduledReport!
-}
 ```
+POST   /api/auth/register         — multi-step onboarding (Steps 1-3)
+POST   /api/auth/login            — email/password login
+POST   /api/auth/refresh          — refresh access token
+POST   /api/auth/logout           — invalidate refresh token
 
-### 4.2 Key Resolvers
-- **Golden Records**: CRUD + merge + split + provenance lookup
-- **Matching**: Trigger match task, poll status, retrieve match candidates
-- **Steward Review**: List suspects, submit decisions (approve/reject/merge)
-- **Audit**: Append-only event log (no update/delete)
-- **Search**: pg_trgm powered fuzzy search on full_name
+GET    /api/customers/me          — current user profile
+PATCH  /api/customers/me          — update profile
+GET    /api/customers/me/address  — saved addresses
+POST   /api/customers/me/address  — add address
+DELETE /api/customers/me/address/:id
 
----
+GET    /api/subscriptions/me      — current subscription
+POST   /api/subscriptions/pause
+POST   /api/subscriptions/resume
+POST   /api/subscriptions/cancel
+POST   /api/subscriptions/change-plan
 
-## 5. Frontend Pages
+GET    /api/orders                — order history
+GET    /api/orders/:id            — order detail with tracking
 
-### 5.1 Authentication
-- Login (email + password)
-- Role-based redirect
+POST   /api/stripe/checkout       — create Stripe Checkout Session
+POST   /api/stripe/portal         — create Customer Portal session
+POST   /api/stripe/webhook        — Stripe webhook handler (raw body)
 
-### 5.2 Golden Records
-- **List View**: Searchable table with filters (status, confidence, source)
-- **Detail View**: Full record with source lineage, match provenance, relationships
-- **Merge UI**: Side-by-side comparison + merge action
+GET    /api/admin/analytics       — dashboard metrics
+GET    /api/admin/customers        — customer list with search/pagination
+GET    /api/admin/customers/:id    — customer detail
+PATCH  /api/admin/customers/:id   — admin update customer
+GET    /api/admin/orders          — all orders with filters
+PATCH  /api/admin/orders/:id      — admin update order/trigger fulfillment
 
-### 5.3 Source Records
-- **Source Catalog**: List all data sources with stats
-- **Batch Ingestion**: Upload CSV/JSON, map fields, trigger ingestion
-- **Record Browser**: Filter by source, status, date range
+POST   /api/webhooks/twilio       — Twilio webhook handler
+POST   /api/webhooks/fulfillment  — fulfillment partner webhook
 
-### 5.4 Matching Engine
-- **Config Panel**: Set thresholds, action rules
-- **Task Dashboard**: Monitor running/completed tasks
-- **Results Explorer**: View match candidates, approve/reject
-
-### 5.5 Steward Workflow
-- **Suspect Queue**: Records flagged for human review
-- **Review Form**: View details, take action (approve/reject/merge/split)
-
-### 5.6 Reporting & AI
-- **Dashboard**: KPI cards (total records, match rate, pending reviews)
-- **AI Assistant**: Query/result log panel
-- **Scheduled Reports**: List + trigger
-
-### 5.7 Admin
-- **Role Management**: Define roles with per-page permissions (JSONB)
-- **User Management**: Invite users, assign roles
-- **Audit Log Viewer**: Immutable audit trail browser
-
----
-
-## 6. Authentication & Authorization
-
-### 6.1 JWT Auth
-- Access token (15-min) + refresh token (7-day, httpOnly cookie)
-- Password hashing: bcrypt
-
-### 6.2 Roles & Permissions
-- Roles stored with JSONB permissions object:
-```json
-{
-  "golden_records": ["read", "write", "approve", "merge"],
-  "source_records": ["read", "write", "ingest"],
-  "matching": ["read", "write", "run"],
-  "steward": ["read", "write", "approve"],
-  "reports": ["read", "write", "trigger"],
-  "admin": ["read", "write", "manage_users", "manage_roles"]
-}
-```
-- Middleware checks permissions per route/action
-
----
-
-## 7. Docker Deployment
-
-```yaml
-services:
-  api:         # Node.js + Apollo Server
-  frontend:    # React dev server / nginx prod
-  postgres:    # PostgreSQL 15
-    command: postgres -c 'shared_preload_libraries=pg_trgm'
-  redis:       # Session/cache
+POST   /api/crm/sync              — trigger CRM sync for customer
+GET    /api/crm/status            — CRM sync queue status
 ```
 
 ---
 
-## 8. Deliverables
+## 6. File Structure
 
-- [x] PostgreSQL schema with all 8 domains, ENUMs, indexes, soft-delete
-- [x] GraphQL API (Apollo Server) — full CRUD + workflow mutations
-- [x] React frontend with all pages
-- [x] JWT auth with role/permission system
-- [x] pg_trgm search
-- [x] Append-only audit trail
-- [x] Docker + docker-compose
-- [x] README
+```
+dtc-subscription-platform/
+├── SPEC.md
+├── README.md
+├── package.json
+├── tsconfig.json
+├── .env.example
+├── docker-compose.yml           # local dev
+├── prisma/
+│   └── schema.prisma
+├── src/
+│   ├── index.ts                 # Express/Fastify entry
+│   ├── config/
+│   │   ├── stripe.ts
+│   │   ├── twilio.ts
+│   │   ├── sendgrid.ts
+│   │   └── aws.ts
+│   ├── middleware/
+│   │   ├── auth.ts              # JWT verification
+│   │   ├── rateLimit.ts
+│   │   └── validate.ts          # Zod schemas
+│   ├── routes/
+│   │   ├── auth.ts
+│   │   ├── customers.ts
+│   │   ├── subscriptions.ts
+│   │   ├── orders.ts
+│   │   ├── admin.ts
+│   │   └── webhooks.ts
+│   ├── services/
+│   │   ├── stripeService.ts
+│   │   ├── twilioService.ts
+│   │   ├── sendGridService.ts
+│   │   ├── fulfillmentService.ts
+│   │   └── crmService.ts
+│   └── utils/
+│       ├── encryption.ts
+│       └── logger.ts
+└── tests/
+    ├── auth.test.ts
+    ├── subscription.test.ts
+    └── stripeWebhook.test.ts
+```
 
 ---
 
-## 9. Acceptance Criteria
+## 7. Out of Scope (Phase 1)
 
-1. **Database**: PostgreSQL schema with UUID PKs, CITEXT, pg_trgm, ENUMs, JSONB, soft-delete
-2. **API**: All GraphQL queries and mutations working
-3. **Auth**: Login/register with JWT + role-based permissions
-4. **Golden Records**: CRUD, merge, split, provenance
-5. **Matching**: Config, task runner, results
-6. **Steward Workflow**: Suspect queue, review actions
-7. **Audit**: Append-only event log
-8. **Search**: Fuzzy search on full_name
-9. **Frontend**: All pages functional
-10. **Docker**: `docker-compose up` starts full stack
+- Marketing email campaigns (SendGrid marketing API)
+- Multi-tenant architecture (single brand for Phase 1)
+- Mobile app (web only)
+- Loyalty/rewards program
+- Inventory management beyond fulfillment webhook status
+
+---
+
+## 8. Delivery Checklist
+
+- [ ] GitHub repo created with full project structure
+- [ ] Prisma schema applied to PostgreSQL
+- [ ] Stripe webhook endpoint verified with test events
+- [ ] Twilio SMS outbound confirmed working
+- [ ] Customer dashboard loads subscription + orders
+- [ ] Admin dashboard shows Stripe MRR data
+- [ ] All ENV variables documented in .env.example
+- [ ] README with setup instructions
+- [ ] No hardcoded secrets (all in .env)
